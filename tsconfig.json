@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "es2017", // 目标语言的版本
+    "module": "commonjs", // 生成代码的模板标准
+    "removeComments": false, // 删除注释
+    "preserveConstEnums": true, // 保留const和enum声明
+    "moduleResolution": "node", // 模块解析策略，ts默认用node的解析策略，即相对的方式导入
+    "experimentalDecorators": true, // 启用实验性的ES装饰器
+    "noImplicitAny": false, // 不允许隐式的any类型
+    "allowSyntheticDefaultImports": true, // 允许从没有设置默认导出的模块中默认导入
+    "outDir": "lib", // 指定输出目录
+    "noUnusedLocals": true, // 检查只声明、未使用的局部变量(只提示不报错)
+    "noUnusedParameters": false, // 检查未使用的函数参数(只提示不报错)
+    "strictNullChecks": true, // 不允许把null、undefined赋值给其他类型的变量
+    "sourceMap": true, // 生成目标文件的sourceMap文件
+    "baseUrl": ".", // 解析非相对模块的基地址，默认是当前目录
+    "rootDir": ".", // 指定输出文件目录(用于输出)，用于控制输出目录结构
+    "jsx": "react-jsx", //在 .tsx 中支持 JSX
+    "allowJs": true, // 允许编译器编译JS，JSX文件
+    "resolveJsonModule": true,
+    // 声明文件目录，默认时node_modules/@types
+    "typeRoots": ["node_modules/@types"],
+    "paths": { "@/*": ["./src/*"] } // 别名路径
+  },
+  "include": ["./src", "./types"],
+  "compileOnSave": false
+}

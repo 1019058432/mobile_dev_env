@@ -1,0 +1,84 @@
+.input-text-box-base {
+  width: 100%;
+  font-size: 27px;
+  font-weight: normal;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  line-height: 30px;
+  padding: 6px 8px;
+  user-select: text;
+  outline: none;
+  cursor: none;
+  caret-color: transparent;
+}
+.input-text-box-1 {
+  @extend .input-text-box-base;
+  line-height: 37px;
+  min-height: 49px;
+  max-height: 121px;
+  overflow-y: auto;
+  border: none;
+  background-color: rgba($color: #ccc, $alpha: 0.2);
+  border-radius: 8px;
+  margin: 0 0 6px;
+}
+.input-text-box-2 {
+  @extend .input-text-box-base;
+  height: 320px;
+}
+
+.bottom-input-box {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  padding-top: 16px;
+  box-shadow: 0px 1px 8px 3px #ccc;
+  background-color: #fff;
+  // 水平布局
+  .honor-view {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    padding-bottom: 32px;
+
+    .emoji-btn {
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      .emoji-icon {
+        font-size: 59px;
+        margin: 0 8px;
+      }
+    }
+    .send-icon {
+      font-size: 24px;
+      margin: 0 8px;
+      padding: 8px 16px;
+      white-space: nowrap;
+      background-color: #090;
+      color: #fff;
+    }
+  }
+}
+
+.tool-box {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+
+  .tool-header {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    border-top: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+
+    .emoji-btn {
+      padding: 16px 8px;
+    }
+  }
+}

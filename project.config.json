@@ -1,0 +1,15 @@
+{
+  "miniprogramRoot": "./dist/weapp/",
+  "projectname": "primaryedusystem-mobile",
+  "description": "教务系统中小学版移动端",
+  "appid": "wxd0d7393706717894",
+  "setting": {
+    "urlCheck": true,
+    "es6": false,
+    "enhance": false,
+    "compileHotReLoad": false,
+    "postcss": false,
+    "minified": false
+  },
+  "compileType": "miniprogram"
+}
