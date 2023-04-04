@@ -114,7 +114,7 @@ const useCommonHandle = (props: EditorProps, ref, changePatch) => {
   }
 
   const getInputText = () => {
-    const str: string = editorRef.current?.getTextContetn()
+    const str: string = editorRef.current?.getTextContetn() || ''
     return str
   }
 

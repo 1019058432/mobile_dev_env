@@ -1,0 +1,40 @@
+.video-canvas-ctx {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+}
+.video-shot-ctx {
+  position: fixed;
+  left: 100vw;
+  top: 0;
+  z-index: 2;
+}
+.video-ctx {
+  position: fixed;
+  width: 100%;
+  top: 0;
+  left: 100vw;
+  /* z-index: 10; */
+}
+.camera_outer {
+  margin: 0;
+}
+
+.btn_area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+}
+.zoom_btn {
+  width: 120px;
+  font-size: 37px;
+  background-color: #09f;
+  color: #fff;
+  margin: 0 20px;
+  text-align: center;
+}
