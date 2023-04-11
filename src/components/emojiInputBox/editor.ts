@@ -89,13 +89,13 @@ export class Cursor {
     }
     target.parentNode?.insertBefore(el, target)
   }
-  // 获取节点中的所有选中节点（待测试非contentEditable为false时是否正常）
+  // 获取节点中的所有选中节点（是否存在非contentEditable为false时的删除操作）
   getSelectedElements() {
-    var selectedElements = []
+    var selectedElements: Node[] = []
     var selection = window.getSelection()
     if (selection) {
       var rangeCount = selection.rangeCount
-      var editableElement = document.querySelector('[contentEditable="true"]')
+      var editableElement = this.containerEl || document.querySelector('[contentEditable="true"]')
       if (!editableElement) {
         return selectedElements // 如果没有可编辑元素，则返回空数组
       }
