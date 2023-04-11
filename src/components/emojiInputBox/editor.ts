@@ -89,14 +89,73 @@ export class Cursor {
     }
     target.parentNode?.insertBefore(el, target)
   }
+  // 获取节点中的所有选中节点（待测试非contentEditable为false时是否正常）
+  getSelectedElements() {
+    var selectedElements = []
+    var selection = window.getSelection()
+    if (selection) {
+      var rangeCount = selection.rangeCount
+      var editableElement = document.querySelector('[contentEditable="true"]')
+      if (!editableElement) {
+        return selectedElements // 如果没有可编辑元素，则返回空数组
+      }
+      // 遍历每个选取范围中的所有节点，查找选中的元素
+      for (var i = 0; i < rangeCount; i++) {
+        var range = selection.getRangeAt(i)
+        var container: Node | null = range.commonAncestorContainer
+        // 如果容器是文本节点，请使用其父元素作为容器（文本节点可能不是可编辑元素的子节点）
+        if (container.nodeType === 3) {
+          container = container.parentNode
+        }
+        // 如果容器是可编辑元素，则使用 TreeWalker 遍历其子节点
+        if (container === editableElement) {
+          var treeWalker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_ELEMENT,
+            {
+              acceptNode: function(node) {
+                const newSelObj = window.getSelection()
+                if (newSelObj && newSelObj.containsNode(node, true)) {
+                  return NodeFilter.FILTER_ACCEPT
+                }
+                return NodeFilter.FILTER_SKIP
+              },
+            },
+            false
+          )
+          // 遍历可编辑元素中所有选中的子节点
+          while (treeWalker.nextNode()) {
+            selectedElements.push(treeWalker.currentNode)
+          }
+        }
+      }
+    }
+    return selectedElements
+  }
+  // 删除selection中选中的节点
+  deleteSelectedNode() {
+    const selectedElements = this.getSelectedElements()
+    selectedElements.map((el: HTMLElement) => {
+      this.containerEl.removeChild(el)
+    })
+    return selectedElements
+  }
   // 移除光标前的一个元素
   delEl() {
     const cursor = this.cursorEl
-    const removeTarget = cursor.previousElementSibling
-    if (removeTarget) {
-      cursor.parentNode?.removeChild(removeTarget)
+    var selection = window.getSelection()
+    var selectedNode = selection?.anchorNode // 获取包含选择文本的节点
+    if (selectedNode) {
+      const deleteNodes = this.deleteSelectedNode()
+      selection?.removeAllRanges() // 移除选中效果，准备进入删除
+      return deleteNodes // ？是否应该包含于fragment中返回
+    } else {
+      const removeTarget = cursor.previousElementSibling
+      if (removeTarget) {
+        cursor.parentNode?.removeChild(removeTarget)
+      }
+      return removeTarget
     }
-    return removeTarget
   }
 }
 
