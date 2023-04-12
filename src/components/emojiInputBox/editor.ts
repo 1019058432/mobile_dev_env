@@ -89,66 +89,18 @@ export class Cursor {
     }
     target.parentNode?.insertBefore(el, target)
   }
-  // 获取节点中的所有选中节点（是否存在非contentEditable为false时的删除操作）
-  getSelectedElements() {
-    var selectedElements: Node[] = []
-    var selection = window.getSelection()
-    if (selection) {
-      var rangeCount = selection.rangeCount
-      var editableElement = this.containerEl || document.querySelector('[contentEditable="true"]')
-      if (!editableElement) {
-        return selectedElements // 如果没有可编辑元素，则返回空数组
-      }
-      // 遍历每个选取范围中的所有节点，查找选中的元素
-      for (var i = 0; i < rangeCount; i++) {
-        var range = selection.getRangeAt(i)
-        var container: Node | null = range.commonAncestorContainer
-        // 如果容器是文本节点，请使用其父元素作为容器（文本节点可能不是可编辑元素的子节点）
-        if (container.nodeType === 3) {
-          container = container.parentNode
-        }
-        // 如果容器是可编辑元素，则使用 TreeWalker 遍历其子节点
-        if (container === editableElement) {
-          var treeWalker = document.createTreeWalker(
-            container,
-            NodeFilter.SHOW_ELEMENT,
-            {
-              acceptNode: function(node) {
-                const newSelObj = window.getSelection()
-                if (newSelObj && newSelObj.containsNode(node, true)) {
-                  return NodeFilter.FILTER_ACCEPT
-                }
-                return NodeFilter.FILTER_SKIP
-              },
-            },
-            false
-          )
-          // 遍历可编辑元素中所有选中的子节点
-          while (treeWalker.nextNode()) {
-            selectedElements.push(treeWalker.currentNode)
-          }
-        }
-      }
-    }
-    return selectedElements
-  }
-  // 删除selection中选中的节点
-  deleteSelectedNode() {
-    const selectedElements = this.getSelectedElements()
-    selectedElements.map((el: HTMLElement) => {
-      this.containerEl.removeChild(el)
-    })
-    return selectedElements
-  }
   // 移除光标前的一个元素
   delEl() {
     const cursor = this.cursorEl
     var selection = window.getSelection()
-    var selectedNode = selection?.anchorNode // 获取包含选择文本的节点
-    if (selectedNode) {
-      const deleteNodes = this.deleteSelectedNode()
-      selection?.removeAllRanges() // 移除选中效果，准备进入删除
-      return deleteNodes // ？是否应该包含于fragment中返回
+
+    if (
+      selection &&
+      selection.toString() &&
+      !selection.anchorNode?.isSameNode(selection.focusNode)
+    ) {
+      const deleteNodes = deleteSelectedNode(this.containerEl)
+      return deleteNodes as HTMLElement[] // ？是否应该包含于fragment中返回
     } else {
       const removeTarget = cursor.previousElementSibling
       if (removeTarget) {
@@ -163,7 +115,9 @@ export class Cursor {
 export class EditorHandle {
   el: Element | null
   cursorHandle: Cursor
-  changeCallBack: (node: string | HTMLElement | Element | DocumentFragment | null) => void // 内容变更时进行通知的回调
+  changeCallBack: (
+    node: string | HTMLElement | HTMLElement[] | Element | DocumentFragment | null
+  ) => void // 内容变更时进行通知的回调
   onKeyBoardInput: (str: string) => void // 键盘文本输入
   initStatu: string | undefined // 是否完成初始化y:ok
   enableKeyBoard: boolean | undefined // 是否启用键盘
@@ -225,12 +179,75 @@ export class EditorHandle {
         break
     }
   }
+  // 监听复制事件(使用默认功能)
+  copyHandle(e: any) {
+    // 阻止默认行为
+    // e.preventDefault();
+    // 获取所选文本
+    // const selectedText = window.getSelection().toString();
+    // 复制文本到剪贴板
+    // e.clipboardData.setData('text/plain', selectedText);
+  }
+  // 监听粘贴事件
+  pastedHandle(e: any) {
+    // 阻止默认行为
+    e.preventDefault()
+    // 从剪贴板获取文本
+    const pastedText = e.clipboardData.getData('text/plain')
+    // todo 插入前检测是否有选中文本，有则先删除再插入以模拟替换效果（此时要注意移动自定义光标，否则文本将插入到非预想的位置）
+    const selection = window.getSelection()
+    if (selection && selection.toString()) {
+      const nodes = this.cursorHandle.delEl()
+      this.changeCallBack(nodes)
+    }
+    // 在输入框中插入文本
+    this.insertText(pastedText)
+  }
+  // 剪切事件句柄
+  cutHandle(e: any) {
+    // 阻止默认行为
+    e.preventDefault()
+    // 获取所选文本
+    const selectedText = window.getSelection()?.toString() || ''
+    // 清空所选文本
+    // document.execCommand('delete');
+    const res = this.cursorHandle.delEl()
+    // 将文本载入剪切板
+    copyTextToClipboard(selectedText) // 非https将使容器离焦
+    this.cursorHandle.focus()
+    this.changeCallBack(res)
+  }
+  // selection句柄
+  selectionchangeHandle(e: any) {
+    var selection = window.getSelection()
+    // 当前有文本被选中
+    if (this.cursorHandle.isMount && selection && selection.type === 'Range') {
+      // 获取选区中的视觉结束节点（若拖动左边的游标则需要反转，即起点下标大于结束下标）
+      const startOrEndNode = [selection.anchorNode, selection.focusNode] // 【起始点，结束点】
+      if (selection.focusOffset < selection.anchorOffset) {
+        startOrEndNode.reverse()
+      }
+      let lastChild = startOrEndNode[1]
+      if (lastChild && !lastChild.isSameNode(this.el)) {
+        while (lastChild.parentNode && !lastChild.parentNode?.isSameNode(this.el)) {
+          lastChild = lastChild?.parentNode
+        }
+        insertAfter(this.cursorHandle.cursorEl, lastChild)
+      }
+    } else {
+      // 没有文本被选中
+    }
+  }
   // 注册事件
   init() {
     if (this.el) {
       this.el.addEventListener('beforeinput', this.beforeInputHandle.bind(this))
       this.el.addEventListener('keyup', this.keyupFn.bind(this))
       this.el.addEventListener('click', this.initTextClickFn.bind(this))
+      this.el.addEventListener('copy', this.copyHandle.bind(this))
+      this.el.addEventListener('paste', this.pastedHandle.bind(this))
+      this.el.addEventListener('cut', this.cutHandle.bind(this))
+      document.addEventListener('selectionchange', this.selectionchangeHandle.bind(this))
       this.initStatu = 'ok'
     }
   }
@@ -261,6 +278,11 @@ export class EditorHandle {
   destroy() {
     this.el?.removeEventListener('beforeinput', this.beforeInputHandle)
     this.el?.removeEventListener('click', this.initTextClickFn)
+    this.el?.removeEventListener('keyup', this.keyupFn)
+    this.el?.removeEventListener('copy', this.copyHandle)
+    this.el?.removeEventListener('paste', this.pastedHandle)
+    this.el?.removeEventListener('cut', this.cutHandle)
+    document.removeEventListener('selectionchange', this.selectionchangeHandle)
   }
 }
 
@@ -286,6 +308,88 @@ export function translateElement(str: string) {
     fragment.appendChild(charSpan)
   })
   return fragment
+}
+// 获取节点中的所有选中节点（是否存在非contentEditable为false时的删除操作）
+export function getSelectedElements(containerEl: HTMLElement) {
+  var selectedElements: Node[] = []
+  var selection = window.getSelection()
+  if (selection) {
+    var rangeCount = selection.rangeCount
+    var editableElement = containerEl || document.querySelector('[contentEditable="true"]')
+    if (!editableElement) {
+      return selectedElements // 如果没有可编辑元素，则返回空数组
+    }
+    // 遍历每个选取范围中的所有节点，查找选中的元素
+    for (var i = 0; i < rangeCount; i++) {
+      var range = selection.getRangeAt(i)
+      var container: Node | null = range.commonAncestorContainer
+      // 如果容器是文本节点，请使用其父元素作为容器（文本节点可能不是可编辑元素的子节点）
+      if (container.nodeType === 3) {
+        container = container.parentNode
+      }
+      // 如果容器是可编辑元素，则使用 TreeWalker 遍历其子节点
+      if (container === editableElement) {
+        var treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+          acceptNode: function(node: HTMLElement) {
+            const newSelObj = window.getSelection()
+            if (newSelObj && newSelObj.containsNode(node, true)) {
+              if (node.classList.contains('cursor') || node.classList.contains('line')) {
+                return NodeFilter.FILTER_SKIP
+              }
+              return NodeFilter.FILTER_ACCEPT
+            }
+            return NodeFilter.FILTER_SKIP
+          },
+        })
+        // 遍历可编辑元素中所有选中的子节点
+        while (treeWalker.nextNode()) {
+          selectedElements.push(treeWalker.currentNode)
+        }
+      }
+    }
+  }
+  return selectedElements
+}
+// 删除selection中选中的节点
+export function deleteSelectedNode(containerEl: HTMLElement) {
+  const selectedElements = getSelectedElements(containerEl)
+  selectedElements.map((el: HTMLElement) => {
+    try {
+      containerEl.removeChild(el)
+      console.log(el.classList, '该节点')
+    } catch (error) {
+      console.warn(error, el, '该节点移除失败')
+    }
+  })
+  return selectedElements
+}
+// 将文本载入剪切板
+export function copyTextToClipboard(text) {
+  return new Promise<void>((resolve, reject) => {
+    // 如果是安全域，则使用 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard
+        .writeText(text)
+        .then(resolve)
+        .catch(reject)
+    } else {
+      // 否则使用 execCommand 方法
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      textArea.style.position = 'fixed' // 防止脱离视口
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        resolve()
+      } catch (err) {
+        reject(err)
+      } finally {
+        document.body.removeChild(textArea)
+      }
+    }
+  })
 }
 
 // 插入光标样式
@@ -317,6 +421,11 @@ function initCursorStyles() {
     overflow: visible;
     position: relative;
     pointer-events: none;
+    -webkit-user-select: none; /* Chrome, Safari, Opera */
+    -khtml-user-select: none; /* Konqueror */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */ 
+    user-select: none;
   }
   .cursor .line {
     display: inline-block;
@@ -330,6 +439,11 @@ function initCursorStyles() {
     top: 50%;
     transform: translate(0, -50%);
     animation: cursor-blinks 1.5s infinite steps(1, start);
+    -webkit-user-select: none; /* Chrome, Safari, Opera */
+    -khtml-user-select: none; /* Konqueror */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */ 
+    user-select: none;
   }
   `
   document.head.appendChild(styleEl)
