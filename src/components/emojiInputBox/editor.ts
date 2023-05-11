@@ -8,7 +8,13 @@ export class Cursor {
   pollyfil: HTMLElement
   isMount: boolean | undefined
   constructor(el: HTMLElement) {
-    this.cursorEl = this.createCursor()
+    const cursorEl = document.querySelector('.cursor')
+    if (cursorEl) {
+      this.isMount = true
+      this.cursorEl = cursorEl as HTMLElement
+    } else {
+      this.cursorEl = this.createCursor()
+    }
     this.pollyfil = this.createPollyfil()
     this.containerEl = el
   }
@@ -20,6 +26,7 @@ export class Cursor {
     const wrapSpan = document.createElement('span')
     wrapSpan.style.display = 'inline-block'
     wrapSpan.style.height = '1em'
+    wrapSpan.setAttribute('isPollyfil', '')
     return wrapSpan
   }
   mountePollyfil() {
@@ -46,7 +53,7 @@ export class Cursor {
       return
     }
     if (!this.isMount || isAppend) {
-      this.containerEl.appendChild(this.cursorEl)
+      insertAfter(this.cursorEl, this.containerEl, true)
     }
     this.isMount = true
 
@@ -100,6 +107,7 @@ export class Cursor {
       !selection.anchorNode?.isSameNode(selection.focusNode)
     ) {
       const deleteNodes = deleteSelectedNode(this.containerEl)
+      selection.collapseToEnd() // 取消光标选中区域并将选择起始光标移动至终点
       return deleteNodes as HTMLElement[] // ？是否应该包含于fragment中返回
     } else {
       const removeTarget = cursor.previousElementSibling
@@ -122,6 +130,12 @@ export class EditorHandle {
   initStatu: string | undefined // 是否完成初始化y:ok
   enableKeyBoard: boolean | undefined // 是否启用键盘
   autoInput?: boolean
+  compositionContext = {
+    // todo
+    status: false,
+    content: '',
+  }
+
   constructor(props: {
     el: HTMLElement
     enableKeyBoard?: boolean
@@ -129,6 +143,16 @@ export class EditorHandle {
     onChange?: typeof None // 因html中夹杂了元素，故不进行文本回调而直接交由调用方直接操作dom自行获取
     onInput?: (str: string) => void
   }) {
+    // 绑定dom事件函数上下文
+    this.beforeInputHandle = this.beforeInputHandle.bind(this)
+    this.keyupFn = this.keyupFn.bind(this)
+    this.initTextClickFn = this.initTextClickFn.bind(this)
+    this.copyHandle = this.copyHandle.bind(this)
+    this.pastedHandle = this.pastedHandle.bind(this)
+    this.cutHandle = this.cutHandle.bind(this)
+    this.selectionchangeHandle = this.selectionchangeHandle.bind(this)
+
+    // 初始化
     this.el = props.el
     this.cursorHandle = new Cursor(props.el)
     this.changeCallBack = props.onChange || None
@@ -137,7 +161,7 @@ export class EditorHandle {
     this.init()
     this.enableKeyBoardModel(props.enableKeyBoard)
   }
-  // 输入句柄（初始化容器输入代理,拦截输入进行包装，在PC端表现不正常也不需要在PC端使用这种多余的方式）
+  /** 输入句柄（初始化容器输入代理,拦截输入进行包装，在PC端表现不正常也不需要在PC端使用这种多余的方式）*/
   beforeInputHandle = (event: any) => {
     // 插入文本
     const inputTextWord = event.data || ''
@@ -150,21 +174,38 @@ export class EditorHandle {
     event.preventDefault()
     return false
   }
-  // 点击事件句柄
+  /** 点击事件句柄 */
   initTextClickFn(event: any) {
     const { target } = event
     if (target) {
-      if (this.el?.isSameNode(target)) {
+      const isMount = this.cursorHandle.isMount
+      if (!isMount && this.el?.isSameNode(target)) {
         // 点击模拟input的div时追加光标到文末
         this.cursorHandle.mounted(true)
-      } else {
-        // 否则移动光标至点击元素前
+      } else if (isMount) {
+        const selection = window.getSelection()
         const cursor = this.cursorHandle.cursorEl
-        const previousSibling = (target as Element).previousSibling
-        if (previousSibling) {
-          insertAfter(cursor, previousSibling)
+
+        // 表情模式时不符
+        if (this.enableKeyBoard && selection && selection.type === 'Caret') {
+          if (this.el?.contains(selection.anchorNode)) {
+            const anchorNode = getCursorPrevNode(this.el)
+            if (anchorNode) {
+              insertAfter(cursor, anchorNode)
+            }
+          } else if (this.el) {
+            insertAfter(cursor, this.el, true)
+          }
         } else {
-          insertAfter(cursor, target)
+          // 否则移动光标至点击元素前
+          const previousSibling = (target as Element).previousSibling
+          const isChild = this.el?.contains(previousSibling)
+
+          if (previousSibling && isChild) {
+            insertAfter(cursor, previousSibling)
+          } else {
+            insertAfter(cursor, target, true)
+          }
         }
       }
     }
@@ -173,7 +214,14 @@ export class EditorHandle {
   keyupFn(e: any) {
     switch (e.key) {
       case 'Backspace':
+        e.preventDefault()
         this.changeCallBack(this.cursorHandle.delEl())
+        break
+      case 'Enter':
+        e.preventDefault()
+        // todo 在br前填充行内空矩形，以解决换行后无法点击上一行的问题
+        this.cursorHandle.insertEl(document.createElement('br'))
+        this.cursorHandle.mountePollyfil()
         break
       default:
         break
@@ -219,35 +267,39 @@ export class EditorHandle {
   }
   // selection句柄
   selectionchangeHandle(e: any) {
-    var selection = window.getSelection()
-    // 当前有文本被选中
-    if (this.cursorHandle.isMount && selection && selection.type === 'Range') {
-      // 获取选区中的视觉结束节点（若拖动左边的游标则需要反转，即起点下标大于结束下标）
-      const startOrEndNode = [selection.anchorNode, selection.focusNode] // 【起始点，结束点】
-      if (selection.focusOffset < selection.anchorOffset) {
-        startOrEndNode.reverse()
-      }
-      let lastChild = startOrEndNode[1]
-      if (lastChild && !lastChild.isSameNode(this.el)) {
-        while (lastChild.parentNode && !lastChild.parentNode?.isSameNode(this.el)) {
-          lastChild = lastChild?.parentNode
+    if (this.cursorHandle.isMount) {
+      var selection = window.getSelection()
+      // 当前有文本被选中
+      if (selection && selection.type === 'Range') {
+        // 获取选区中的视觉结束节点（若拖动左边的游标则需要反转，即起点下标大于结束下标）
+        const startOrEndNode = [selection.anchorNode, selection.focusNode] // 【起始点，结束点】
+        if (selection.focusOffset < selection.anchorOffset) {
+          startOrEndNode.reverse()
         }
-        insertAfter(this.cursorHandle.cursorEl, lastChild)
+        let lastChild = startOrEndNode[1]
+        if (lastChild && !lastChild.isSameNode(this.el)) {
+          while (lastChild.parentNode && !lastChild.parentNode?.isSameNode(this.el)) {
+            lastChild = lastChild?.parentNode
+          }
+          insertAfter(this.cursorHandle.cursorEl, lastChild)
+        }
+      } else {
+        // 没有文本被选中,但可能是切换了光标位置
+        // 但此时offset始终为0，1
+        // const l = geRealLength()
       }
-    } else {
-      // 没有文本被选中
     }
   }
   // 注册事件
   init() {
     if (this.el) {
-      this.el.addEventListener('beforeinput', this.beforeInputHandle.bind(this))
-      this.el.addEventListener('keyup', this.keyupFn.bind(this))
-      this.el.addEventListener('click', this.initTextClickFn.bind(this))
-      this.el.addEventListener('copy', this.copyHandle.bind(this))
-      this.el.addEventListener('paste', this.pastedHandle.bind(this))
-      this.el.addEventListener('cut', this.cutHandle.bind(this))
-      document.addEventListener('selectionchange', this.selectionchangeHandle.bind(this))
+      this.el.addEventListener('beforeinput', this.beforeInputHandle)
+      this.el.addEventListener('keyup', this.keyupFn)
+      this.el.addEventListener('click', this.initTextClickFn)
+      this.el.addEventListener('copy', this.copyHandle)
+      this.el.addEventListener('paste', this.pastedHandle)
+      this.el.addEventListener('cut', this.cutHandle)
+      document.addEventListener('selectionchange', this.selectionchangeHandle)
       this.initStatu = 'ok'
     }
   }
@@ -287,12 +339,21 @@ export class EditorHandle {
 }
 
 // 光标移动
-export function insertAfter(newEl: HTMLElement, targetEl: Node) {
-  const parentEl = targetEl.parentNode
+export function insertAfter(newEl: HTMLElement, targetEl: Node, isAppend = false) {
+  const parentEl = isAppend ? targetEl : targetEl.parentNode
   if (!parentEl) {
     return
   }
-  if (parentEl.lastChild == targetEl) {
+  const nodes = document.querySelectorAll('.cursor') || []
+  nodes.forEach((node) => {
+    try {
+      parentEl.removeChild(node)
+    } catch (error) {
+      console.log('Deletion failed, they have no parent-child relationship')
+    }
+  })
+
+  if (isAppend || parentEl.lastChild == targetEl) {
     parentEl.appendChild(newEl)
   } else {
     parentEl.insertBefore(newEl, targetEl.nextSibling)
@@ -329,7 +390,7 @@ export function getSelectedElements(containerEl: HTMLElement) {
       }
       // 如果容器是可编辑元素，则使用 TreeWalker 遍历其子节点
       if (container === editableElement) {
-        var treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+        const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
           acceptNode: function(node: HTMLElement) {
             const newSelObj = window.getSelection()
             if (newSelObj && newSelObj.containsNode(node, true)) {
@@ -356,7 +417,6 @@ export function deleteSelectedNode(containerEl: HTMLElement) {
   selectedElements.map((el: HTMLElement) => {
     try {
       containerEl.removeChild(el)
-      console.log(el.classList, '该节点')
     } catch (error) {
       console.warn(error, el, '该节点移除失败')
     }
@@ -390,6 +450,50 @@ export function copyTextToClipboard(text) {
       }
     }
   })
+}
+// 获取编辑文本中实际的光标前的元素个数及最接近元素
+export function getCursorPrevNode(container) {
+  const selection = window.getSelection()
+  let cursorPrevNodeCount = 0
+  if (!selection) {
+    return null
+  }
+  let anchorNode = selection.anchorNode
+  let anchorOffset = selection.anchorOffset
+
+  if (!container) {
+    return null
+  }
+  if (!anchorNode) {
+    return null
+  }
+  const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: function(node: HTMLElement) {
+      if (node.classList.contains('cursor') || node.classList.contains('line')) {
+        return NodeFilter.FILTER_SKIP
+      }
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+  // 遍历可编辑元素中所有选中的子节点
+  let currentNode
+  while (treeWalker.nextNode()) {
+    currentNode = treeWalker.currentNode
+    if ((currentNode as HTMLElement).hasAttribute('ispollyfil')) {
+      continue
+    }
+    cursorPrevNodeCount++
+    if (treeWalker.currentNode === anchorNode.parentNode) {
+      // 需要考虑offset在span中的文本前的情况,即多算了一个文字如：(a)(|b),length=2
+      if (anchorOffset === 0) {
+        cursorPrevNodeCount = cursorPrevNodeCount - 1
+        currentNode = treeWalker.previousNode()
+      }
+      break
+    }
+  }
+
+  return currentNode
 }
 
 // 插入光标样式
